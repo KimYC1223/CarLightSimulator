@@ -8,10 +8,10 @@ namespace Camera
         private const string MouseScrollWheelAxisName = "Mouse ScrollWheel";
         private const float MouseScrollWheelSensitivity = 1f;
         private const float LeftInputScale = 0.01f;
-        private const float RightInputScale = 0.001f;
+        private const float RightInputScale = 0.00001f;
 
         [Header("트랜스폼")]
-        [SerializeField] private Transform cameraAnchor;
+        [SerializeField] private Transform mainCameraAnchor;
         [SerializeField] private Transform mainCamera;
 
         [Header("Damping System 최소 / 최대값")] [Space(15)]
@@ -51,8 +51,8 @@ namespace Camera
         
         private void InitDampingSystem()
         {
-            horizontalRotation = cameraAnchor.localEulerAngles.y;
-            verticalRotation = cameraAnchor.localEulerAngles.x;
+            horizontalRotation = mainCameraAnchor.localEulerAngles.y;
+            verticalRotation = mainCameraAnchor.localEulerAngles.x;
             zoom = mainCamera.localPosition.z;
             initialPosition = new Vector2(transform.position.x, transform.position.z);
             currentPosition = initialPosition;
@@ -151,13 +151,8 @@ namespace Camera
                     x : (rightMousePosition.x - Input.mousePosition.x) * mouseSensitivity * RightInputScale,
                     y : (rightMousePosition.y - Input.mousePosition.y) * mouseSensitivity * RightInputScale);
 
-                var cos = Mathf.Cos((cameraAnchor.localEulerAngles.y - 180f) * Mathf.Deg2Rad);
-                var sin = Mathf.Sin((cameraAnchor.localEulerAngles.y - 180f) * Mathf.Deg2Rad);
-
-                tempPosition = new Vector2(
-                    x : - inputVec.y * sin + inputVec.x * cos,
-                    y : - inputVec.y * cos + inputVec.x * sin);
-
+                var direction = inputVec.x * mainCameraAnchor.right + inputVec.y * mainCameraAnchor.forward;
+                tempPosition = new Vector2(direction.x, direction.z);
             }
             else if (isMouseDown == false && isRightMouseButtonClicking)
             {
@@ -174,16 +169,15 @@ namespace Camera
 
         private void OnRightMouseButtonUp()
         {
-            var clampedX = Mathf.Clamp(currentPosition.x + tempPosition.x, 
-                        initialPosition.x - moveAreaSize, 
-                        initialPosition.x + moveAreaSize);
-            var clampedY = Mathf.Clamp(currentPosition.y + tempPosition.y, 
-                        initialPosition.y - moveAreaSize, 
-                        initialPosition.y + moveAreaSize);
+            var result = currentPosition + tempPosition;
+            var distance = Vector2.Distance(result, initialPosition);
+            if(distance > moveAreaSize)
+            {
+                result = initialPosition + (result - initialPosition).normalized * moveAreaSize;
+            }
+            currentPosition = result;
 
-            currentPosition = new Vector2(clampedX, clampedY);
-
-            leftMousePosition = Vector2.zero;
+            rightMousePosition = Vector2.zero;
             tempPosition = Vector2.zero;
         }
 
@@ -211,22 +205,23 @@ namespace Camera
                 value : verticalRotation - tempVerticalRotation, 
                 min : verticalRotationMin, 
                 max : verticalRotationMax);
-            var clampedX = Mathf.Clamp(
-                value : currentPosition.x + tempPosition.x, 
-                min : initialPosition.x - moveAreaSize, 
-                max : initialPosition.x + moveAreaSize);
-            var clampedY = Mathf.Clamp(
-                value : currentPosition.y + tempPosition.y, 
-                min : initialPosition.y - moveAreaSize, 
-                max : initialPosition.y + moveAreaSize);
+
+            var mainCameraAnchorPosition = currentPosition + tempPosition;
+            var distance = Vector2.Distance(mainCameraAnchorPosition, initialPosition);
+            if(distance > moveAreaSize)
+            {
+                mainCameraAnchorPosition = 
+                    initialPosition + (mainCameraAnchorPosition - initialPosition).normalized * moveAreaSize;
+            }
+            currentPosition = mainCameraAnchorPosition;
 
             var currentHorizontalRotation = horizontalRotationDampingSystem.Calculate(horizontalRotation + tempHorizontalRotation);
             var currentVerticalRotation = verticalRotationDampingSystem.Calculate(clampedVerticalRotation);
             var currentZoom = zoomDampingSystem.Calculate(zoom);
-            var currentAnchorPosition = moveAreaDampingSystem.Calculate(new Vector2(clampedX, clampedY));
+            var currentAnchorPosition = moveAreaDampingSystem.Calculate(currentPosition);
 
-            cameraAnchor.position = new Vector3(currentAnchorPosition.x, 0f, currentAnchorPosition.y);
-            cameraAnchor.localEulerAngles = new Vector3(currentVerticalRotation, currentHorizontalRotation, 0f);
+            mainCameraAnchor.position = new Vector3(currentAnchorPosition.x, 0f, currentAnchorPosition.y);
+            mainCameraAnchor.localEulerAngles = new Vector3(currentVerticalRotation, currentHorizontalRotation, 0f);
             mainCamera.localPosition = new Vector3(0f, 0f, currentZoom);
         }
     }
